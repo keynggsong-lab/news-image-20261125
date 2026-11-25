@@ -1,32 +1,59 @@
 #!/usr/bin/env python3
-"""Copy entry.png to the output directory.
+"""Place the finished news image where make.fun expects it.
 
-Stdlib only, no network. Deterministic: byte-for-byte copy of the
-entry.png shipped beside this script.
+The image itself is pre-rendered and shipped next to this file as
+``entry.png``.  All this script does is reproduce it, byte for byte,
+at ``$MAKEFUN_OUTPUT_DIR/entry.png`` (``/output/entry.png`` when the
+variable is unset), then check the copy really is the same size as
+the original.  Nothing is fetched, rendered, or altered at run time:
+Python standard library only, no network access, fully deterministic.
 """
 
+from __future__ import annotations
+
 import os
-import shutil
 import sys
+from pathlib import Path
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "entry.png")
+SOURCE = Path(__file__).resolve().parent / "entry.png"
+TARGET_NAME = "entry.png"
+DEFAULT_OUTPUT_DIR = "/output"
 
 
-def main() -> int:
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    dst = os.path.join(out_dir, "entry.png")
-    shutil.copyfile(SRC, dst)
-    src_size = os.path.getsize(SRC)
-    dst_size = os.path.getsize(dst)
-    if src_size != dst_size:
-        print(f"size mismatch: source {src_size} != output {dst_size}",
-              file=sys.stderr)
+def output_path() -> Path:
+    """Resolve the destination path from the environment."""
+    directory = os.environ.get("MAKEFUN_OUTPUT_DIR") or DEFAULT_OUTPUT_DIR
+    return Path(directory) / TARGET_NAME
+
+
+def copy_image(destination: Path) -> int:
+    """Write an exact copy of SOURCE to destination and verify it.
+
+    Returns 0 on success, 1 when the copy does not match the source
+    in size (which should never happen for a local file copy — the
+    check exists so a truncated write fails loudly instead of
+    silently producing a corrupt image).
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(SOURCE.read_bytes())
+    expected = SOURCE.stat().st_size
+    actual = destination.stat().st_size
+    if actual != expected:
+        print(
+            f"error: copied {actual} bytes, expected {expected}",
+            file=sys.stderr,
+        )
         return 1
-    print(f"wrote {dst} ({dst_size} bytes)")
+    print(f"wrote {destination} ({actual} bytes)")
     return 0
 
 
+def main() -> int:
+    if not SOURCE.is_file():
+        print(f"error: missing {SOURCE}", file=sys.stderr)
+        return 1
+    return copy_image(output_path())
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
